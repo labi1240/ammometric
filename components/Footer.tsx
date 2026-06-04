@@ -2,14 +2,15 @@ import Link from 'next/link';
 import { RiFocus2Line, RiTwitterFill, RiFacebookFill, RiInstagramFill, RiGithubFill } from '@remixicon/react';
 import { Copyright } from './Copyright';
 
+// Slugs must match the canonical Caliber.slug (seo_name from master_config.json).
 const TOP_CALIBERS = [
-    { name: '9mm Luger', slug: '9mm' },
-    { name: '5.56 NATO', slug: '5-56-nato' },
-    { name: '7.62x39mm', slug: '7-62x39mm' },
+    { name: '9mm Luger', slug: '9mm-luger' },
     { name: '.223 Remington', slug: '223-remington' },
-    { name: '.22 LR', slug: '22-lr' },
-    { name: '.45 ACP', slug: '45-acp' },
+    { name: '.45 ACP', slug: '45acp' },
     { name: '.308 Winchester', slug: '308-winchester' },
+    { name: '.40 S&W', slug: '40sw' },
+    { name: '.38 Special', slug: '38-special' },
+    { name: '7.62x39mm', slug: '7.62x39mm' },
     { name: '12 Gauge', slug: '12-gauge' },
 ];
 
