@@ -1,4 +1,4 @@
-import prisma  from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { Product, Offer, Brand, Retailer, PriceHistoryPoint } from '../types';
 import { Prisma } from '@prisma/client';
 import { cacheLife, cacheTag } from 'next/cache';
@@ -9,13 +9,13 @@ import { cacheLife, cacheTag } from 'next/cache';
 // ==========================================
 
 export async function getRetailers() {
-  "use cache";
-  cacheLife("days");
+    "use cache";
+    cacheLife("days");
 
-  const retailers = await prisma.retailer.findMany({
-    orderBy: { name: 'asc' },
-  });
-  return retailers;
+    const retailers = await prisma.retailer.findMany({
+        orderBy: { name: 'asc' },
+    });
+    return retailers;
 }
 
 // Matches your "Engineering Profile" - Static Data
@@ -46,8 +46,8 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
 // Same logic for ID-based fetch - keep it static
 export async function getProduct(id: string): Promise<Product | null> {
     "use cache";
-    cacheLife("weeks"); 
-    
+    cacheLife("weeks");
+
     const item = await prisma.catalogItem.findUnique({
         where: { id },
         include: {
@@ -77,7 +77,7 @@ export async function getProduct(id: string): Promise<Product | null> {
 export async function getOffers(itemId: string): Promise<Offer[]> {
     "use cache";
     cacheLife("hours"); // ✅ Updates daily/hourly
-    cacheTag(`offers-${itemId}`); 
+    cacheTag(`offers-${itemId}`);
 
     const offers = await prisma.offer.findMany({
         where: { itemId },
@@ -113,17 +113,13 @@ export async function getPriceHistory(itemId: string): Promise<PriceHistoryPoint
     cacheLife("hours");
 
     try {
+        // Fast path: read the precomputed daily rollup (offer_price_daily),
+        // refreshed by the /api/cron/refresh-price-rollup cron. See
+        // prisma/sql/price_history.sql.
         const history = await prisma.$queryRaw<any[]>`
-            SELECT 
-                date_trunc('day', oh.time) as day,
-                r.name as "retailerName",
-                MIN(oh.price) as min_price,
-                MIN(oh."unitPrice") as min_unit_price
-            FROM "OfferHistory" oh
-            JOIN "Offer" o ON oh."offerId" = o.id
-            JOIN "Retailer" r ON o."retailerId" = r.id
-            WHERE o."itemId" = ${itemId}
-            GROUP BY day, r.name
+            SELECT day, retailer_name as "retailerName", min_price, min_unit_price
+            FROM offer_price_daily
+            WHERE item_id = ${itemId}
             ORDER BY day ASC
         `;
 
@@ -134,8 +130,33 @@ export async function getPriceHistory(itemId: string): Promise<PriceHistoryPoint
             retailerName: point.retailerName
         }));
     } catch (e) {
-        console.error('Error fetching price history:', e);
-        return [];
+        // Fallback: if the materialized view isn't created yet, compute live.
+        console.error('price rollup unavailable, falling back to live query:', e);
+        try {
+            const history = await prisma.$queryRaw<any[]>`
+                SELECT
+                    date_trunc('day', oh.time) as day,
+                    r.name as "retailerName",
+                    MIN(oh.price) as min_price,
+                    MIN(oh."unitPrice") as min_unit_price
+                FROM "OfferHistory" oh
+                JOIN "Offer" o ON oh."offerId" = o.id
+                JOIN "Retailer" r ON o."retailerId" = r.id
+                WHERE o."itemId" = ${itemId}
+                GROUP BY day, r.name
+                ORDER BY day ASC
+            `;
+
+            return history.map(point => ({
+                time: point.day.toISOString(),
+                price: Number(point.min_price),
+                unitPrice: point.min_unit_price ? Number(point.min_unit_price) : undefined,
+                retailerName: point.retailerName
+            }));
+        } catch (fallbackErr) {
+            console.error('Error fetching price history:', fallbackErr);
+            return [];
+        }
     }
 }
 
@@ -285,7 +306,7 @@ export async function getProductsByIds(ids: string[]): Promise<Product[]> {
 export async function getPairedProduct(itemId: string): Promise<Product | null> {
     "use cache";
     cacheLife("hours");
-    
+
     const item = await prisma.catalogItem.findUnique({
         where: { id: itemId },
         include: {
@@ -453,6 +474,7 @@ function mapToProduct(item: any): Product {
         product.casing = specs.casing || undefined;
         product.velocity = specs.velocity || undefined;
         product.type = specs.bulletType || undefined;
+        product.ballisticsData = specs.ballisticsData || undefined;
         product.caliber = specs.Caliber?.name || undefined;
         product.caliberSlug = specs.Caliber?.slug;
     }
@@ -534,4 +556,31 @@ export async function getTopCalibers(
         slug: c.slug,
         count: c._count.AmmoSpecs
     }));
+}
+
+export async function getPopularProductSlugs(
+    kind: 'FIREARM' | 'AMMO',
+    limit = 100
+): Promise<string[]> {
+    "use cache";
+    cacheLife("days");
+
+    try {
+        const products = await prisma.catalogItem.findMany({
+            where: {
+                kind: kind,
+                offerCount: { gt: 0 } // Only index products with offers
+            },
+            select: { slug: true },
+            orderBy: [
+                { bestPrice: 'asc' } // Simple proxy for popularity if views aren't tracked
+            ],
+            take: limit
+        });
+
+        return products.map(p => p.slug);
+    } catch (e) {
+        console.error(`Error fetching popular ${kind} slugs:`, e);
+        return [];
+    }
 }

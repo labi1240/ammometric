@@ -38,3 +38,19 @@ compare_inventory.ts
 inventory_full_report.txt
 filter_options.json
 
+# Local agent/tooling config — contains secrets, never commit
+.claude/
+skills-lock.json
+.mcp.json
+
+# Local data dumps & scratch
+*.jsonl
+server.txt
+
+# Build artifacts
+*.tsbuildinfo
+
+
+# Python
+__pycache__/
+*.pyc

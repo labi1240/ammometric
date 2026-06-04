@@ -48,6 +48,7 @@ export interface Product {
   casing?: string; // e.g., 'Brass', 'Steel'
   velocity?: number; // FPS
   type?: string; // e.g., 'FMJ', 'JHP'
+  ballisticsData?: any;
   // Market Data
   priceHistory?: PriceHistoryPoint[]; // Array of lowest prices over time
 }

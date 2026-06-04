@@ -1,87 +1,79 @@
-import { getServerSideSitemap } from 'next-sitemap'
+import { getServerSideSitemap, ISitemapField } from 'next-sitemap'
 import prisma from '@/lib/prisma'
-import { ISitemapField } from 'next-sitemap'
+import { cacheLife } from 'next/cache'
 
-export async function GET(request: Request) {
-    // 1. Fetch Products
-    // CRITICAL FIX: Added 'take: 45000' to prevent timeout (Google limit is 50k per file)
-    const products = await prisma.catalogItem.findMany({
-        select: {
-            slug: true,
-            kind: true,
-            updatedAt: true
-        },
-        take: 45000 // Leave room for brands/calibers to fit in 50k limit
-    });
+const baseUrl = process.env.SITE_URL || 'https://www.ammometric.com'
 
-    // 2. Fetch Brands
-    const brands = await prisma.brand.findMany({
-        select: { slug: true }
-    });
+// Encode each path segment safely (handles "&", spaces, etc. in slugs).
+const safeSlug = (slug: string) =>
+    slug.split('/').map((s) => encodeURIComponent(s)).join('/')
 
-    // 3. Fetch Calibers
-    const calibers = await prisma.caliber.findMany({
-        select: { slug: true }
-    });
+// Build the full field list once and cache it for a day. The previous version
+// ran a 45k-row query (plus brands + calibers) on EVERY request to the sitemap,
+// which is a real cost + timeout risk on each crawl. The data changes slowly,
+// so a daily cache is plenty fresh.
+async function getSitemapFields(): Promise<ISitemapField[]> {
+    'use cache'
+    cacheLife('days')
 
-    const fields: ISitemapField[] = [];
-    
-    // Use your production domain if available, otherwise fallback
-    const baseUrl = process.env.SITE_URL || 'https://www.ammometric.com'; 
+    const [products, ammoBrands, firearmBrands, ammoCalibers, firearmCalibers] =
+        await Promise.all([
+            // Products (Google limit is 50k/file; leave room for the rest).
+            prisma.catalogItem.findMany({
+                where: { offerCount: { gt: 0 } },
+                select: { slug: true, kind: true, updatedAt: true },
+                take: 45000,
+            }),
+            // Brands that actually have in-catalog AMMO / FIREARM products.
+            prisma.brand.findMany({
+                where: { CatalogItem: { some: { kind: 'AMMO', offerCount: { gt: 0 } } } },
+                select: { slug: true },
+            }),
+            prisma.brand.findMany({
+                where: { CatalogItem: { some: { kind: 'FIREARM', offerCount: { gt: 0 } } } },
+                select: { slug: true },
+            }),
+            // Calibers that actually have ammo / firearm products.
+            prisma.caliber.findMany({
+                where: { AmmoSpecs: { some: { CatalogItem: { offerCount: { gt: 0 } } } } },
+                select: { slug: true },
+            }),
+            prisma.caliber.findMany({
+                where: { FirearmChamber: { some: { FirearmSpecs: { CatalogItem: { offerCount: { gt: 0 } } } } } },
+                select: { slug: true },
+            }),
+        ])
 
-    // Helper to safely encode slugs (Fixes the "&" error)
-    // We split by '/' just in case your slugs have nested paths, though usually they don't.
-    const safeSlug = (slug: string) => {
-        return slug.split('/').map(s => encodeURIComponent(s)).join('/');
-    };
+    const fields: ISitemapField[] = []
 
-    // Product URLs
-    products.forEach(p => {
-        if (!p.slug) return;
+    // Product detail pages.
+    for (const p of products) {
+        if (!p.slug) continue
         fields.push({
-            // FIX applied here:
             loc: `${baseUrl}/${p.kind === 'AMMO' ? 'ammo' : 'firearms'}/${safeSlug(p.slug)}`,
             lastmod: p.updatedAt?.toISOString(),
             changefreq: 'daily',
             priority: 0.7,
-        });
-    });
+        })
+    }
 
-    // Brand URLs
-    brands.forEach(b => {
-        if (!b.slug) return;
-        // FIX applied here:
-        const encodedSlug = safeSlug(b.slug);
-        
+    // Category landing pages — only emit the kind that has products, so we
+    // never feed Google a URL that 404s (or renders thin/empty).
+    const pushCategory = (path: 'ammo' | 'firearms', slug: string, priority: number) =>
         fields.push({
-            loc: `${baseUrl}/ammo/${encodedSlug}`,
+            loc: `${baseUrl}/${path}/${safeSlug(slug)}`,
             changefreq: 'weekly',
-            priority: 0.5,
-        });
-        fields.push({
-            loc: `${baseUrl}/firearms/${encodedSlug}`,
-            changefreq: 'weekly',
-            priority: 0.5,
-        });
-    });
+            priority,
+        })
 
-    // Caliber URLs
-    calibers.forEach(c => {
-        if (!c.slug) return;
-        // FIX applied here:
-        const encodedSlug = safeSlug(c.slug);
+    for (const c of ammoCalibers) if (c.slug) pushCategory('ammo', c.slug, 0.6)
+    for (const c of firearmCalibers) if (c.slug) pushCategory('firearms', c.slug, 0.6)
+    for (const b of ammoBrands) if (b.slug) pushCategory('ammo', b.slug, 0.5)
+    for (const b of firearmBrands) if (b.slug) pushCategory('firearms', b.slug, 0.5)
 
-        fields.push({
-            loc: `${baseUrl}/ammo/${encodedSlug}`,
-            changefreq: 'weekly',
-            priority: 0.6,
-        });
-        fields.push({
-            loc: `${baseUrl}/firearms/${encodedSlug}`,
-            changefreq: 'weekly',
-            priority: 0.6,
-        });
-    });
+    return fields
+}
 
-    return getServerSideSitemap(fields);
+export async function GET() {
+    return getServerSideSitemap(await getSitemapFields())
 }

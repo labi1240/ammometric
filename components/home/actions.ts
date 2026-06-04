@@ -6,6 +6,8 @@ import { Product as DBProduct } from '@/types';
 import { cacheLife } from 'next/cache';
 
 export async function searchHomeProducts(query: string, kind: 'AMMO' | 'FIREARM' | 'ACCESSORY' = 'AMMO'): Promise<HomeProduct[]> {
+    'use cache';
+    cacheLife('minutes');
     try {
         const products = await getProducts(kind, 20, 0, { search: query });
 

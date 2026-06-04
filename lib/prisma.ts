@@ -30,8 +30,15 @@ const ssl = {
         tls.checkServerIdentity(dbHost, cert),
 }
 
+// Pool size. The previous `max: 1` serialized every concurrent query — the
+// homepage alone fans out 14 parallel queries via Promise.all, so a single
+// connection forced them to run one-at-a-time. PgBouncer (transaction mode)
+// multiplexes these client connections onto far fewer server connections, so a
+// larger client pool is safe. Override per-environment with DB_POOL_MAX.
+const POOL_MAX = Number(process.env.DB_POOL_MAX) || 10
+
 const prismaClientSingleton = () => {
-    const pool = new Pool({ connectionString, max: 1, ssl })
+    const pool = new Pool({ connectionString, max: POOL_MAX, ssl })
     const adapter = new PrismaPg(pool)
     return new PrismaClient({ adapter })
 }

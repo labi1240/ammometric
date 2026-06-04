@@ -84,8 +84,12 @@ model AmmoSpecs {
   isSteelCase      Boolean?      @default(false)
   isRemanufactured Boolean?      @default(false)
   isSubsonic       Boolean?      @default(false)
+  ballisticsData   Json?
   Caliber          Caliber       @relation(fields: [caliberId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   CatalogItem      CatalogItem   @relation(fields: [itemId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([caliberId])
+  @@index([grain])
 }
 
 model BlockedRetailer {
@@ -153,6 +157,12 @@ model CatalogItem {
   FirearmSpecs     FirearmSpecs?
   Offer            Offer[]
   OwnedFirearm     OwnedFirearm[]
+
+  // Hot path: getProducts() filters by kind + offerCount and sorts by
+  // bestCpr/bestPrice. Without these the catalog query is a full scan + sort.
+  @@index([kind, offerCount, bestCpr, bestPrice])
+  @@index([kind, offerCount, bestPrice])
+  @@index([brandId])
 }
 
 model FirearmCategory {
@@ -170,6 +180,9 @@ model FirearmChamber {
   FirearmSpecs   FirearmSpecs @relation(fields: [firearmSpecsId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@id([firearmSpecsId, caliberId])
+  // FK used in caliber filters/joins; composite PK leads with firearmSpecsId
+  // so caliberId lookups need their own index.
+  @@index([caliberId])
 }
 
 model FirearmSpecs {
@@ -225,6 +238,10 @@ model Offer {
   OfferHistory      OfferHistory[]  @ignore
 
   @@unique([itemId, retailerId, unitsCount, currency], map: "Offer_unique_idx")
+  // getOffers() filters by itemId and sorts by price; the unique index above
+  // covers itemId as a prefix but not the price sort.
+  @@index([itemId, price])
+  @@index([retailerId])
 }
 
 /// This table has subclasses and requires additional setup for migrations. Visit https://pris.ly/d/table-inheritance for more info.

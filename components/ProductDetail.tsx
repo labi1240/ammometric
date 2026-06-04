@@ -26,8 +26,16 @@ import {
   RiTimerLine,
   RiCheckboxCircleFill
 } from '@remixicon/react';
-import OptimizedBallisticPairing from './OptimizedBallisticPairing';
-import PriceHistoryChart from './PriceHistoryChart';
+import dynamic from 'next/dynamic';
+
+// Heavy, below-the-fold widgets — code-split so recharts and the pairing UI
+// don't ship in the initial PDP bundle. Both render only after scroll.
+const OptimizedBallisticPairing = dynamic(() => import('./OptimizedBallisticPairing'), {
+  loading: () => <div className="h-48 rounded-xl bg-slate-100 animate-pulse" />,
+});
+const PriceHistoryChart = dynamic(() => import('./PriceHistoryChart'), {
+  loading: () => <div className="h-64 rounded-xl bg-slate-100 animate-pulse" />,
+});
 
 // --- Ballistics Simulation Engine (Ammo Only) ---
 
@@ -181,8 +189,13 @@ const ProductDetail: React.FC<{ initialProduct?: Product, pairedProduct?: Produc
   const [ballisticsView, setBallisticsView] = useState<'traj' | 'energy' | 'card'>('card');
 
   const simData = useMemo(() => {
+    // If we have pre-computed data and the user hasn't modified settings from their defaults (which matches the backend), use it.
+    // This offloads the initial heavy calculation to the server-side fetched JSON.
+    if (product?.ballisticsData && velocity === product.velocity && bc === (product.casing ? 0.2 : 0.15) && zero === 50 && sightHeight === 1.5) {
+      return product.ballisticsData as BallisticsResult[];
+    }
     return calculateBallistics(velocity, bc, zero, sightHeight, product?.grain || 115);
-  }, [velocity, bc, zero, sightHeight, product?.grain]);
+  }, [velocity, bc, zero, sightHeight, product?.grain, product?.ballisticsData]);
 
   const sortedOffers = useMemo(() => {
     if (!product?.offers) return [];

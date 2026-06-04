@@ -11,6 +11,8 @@ import { HomeView } from '@/components/home/HomeView';
 import { FilterSidebar } from '@/components/home/FilterSidebar';
 import { ProductList } from '@/components/home/ProductList';
 import { HomeSearch } from '@/components/home/HomeSearch';
+import { JsonLd } from '@/components/JsonLd';
+import { buildOrganizationJsonLd, buildWebsiteJsonLd } from '@/lib/seo';
 
 export const metadata: Metadata = {
     title: 'AmmoMetric | Find In-Stock Guns & Ammo Instantly',
@@ -126,8 +128,11 @@ async function HomeContent(props: { searchParams: Promise<{ [key: string]: strin
 
 export default function HomePage(props: { searchParams: Promise<{ [key: string]: string | undefined }> }) {
     return (
-        <React.Suspense fallback={<HomeSkeleton />}>
-            <HomeContent searchParams={props.searchParams} />
-        </React.Suspense>
+        <>
+            <JsonLd data={[buildOrganizationJsonLd(), buildWebsiteJsonLd()]} />
+            <React.Suspense fallback={<HomeSkeleton />}>
+                <HomeContent searchParams={props.searchParams} />
+            </React.Suspense>
+        </>
     );
 }

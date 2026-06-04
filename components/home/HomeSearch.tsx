@@ -3,7 +3,14 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Search, ScanBarcode, ArrowRight, TrendingUp } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
-import { BarcodeScanner } from './BarcodeScanner';
+import dynamic from 'next/dynamic';
+
+// react-zxing is heavy and only needed once the user opens the scanner.
+// Code-split it out of the homepage's initial bundle.
+const BarcodeScanner = dynamic(
+    () => import('./BarcodeScanner').then((m) => m.BarcodeScanner),
+    { ssr: false },
+);
 
 const TRENDING_SEARCHES = [
     { term: '9mm', category: 'Handgun Ammo', path: 'ammo' },
