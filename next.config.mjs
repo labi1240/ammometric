@@ -3,6 +3,12 @@ const nextConfig = {
     reactStrictMode: true,
     cacheComponents: true,
 
+    // Pin the workspace root so Turbopack doesn't pick up a stray lockfile in a
+    // parent directory (e.g. ~/pnpm-lock.yaml) as the root.
+    turbopack: {
+        root: import.meta.dirname,
+    },
+
     images: {
         remotePatterns: [
             { protocol: 'https', hostname: 'logo.clearbit.com' },

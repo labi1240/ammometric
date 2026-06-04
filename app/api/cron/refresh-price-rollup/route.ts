@@ -5,7 +5,8 @@ import prisma from '@/lib/prisma';
 // Triggered by Vercel Cron (schedule in vercel.json). Vercel automatically sends
 // `Authorization: Bearer <CRON_SECRET>` when the CRON_SECRET env var is set.
 
-export const dynamic = 'force-dynamic';
+// Route handlers are dynamic by default under cacheComponents — no `dynamic`
+// segment config needed (and it's incompatible with cacheComponents).
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
