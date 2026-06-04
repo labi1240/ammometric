@@ -49,6 +49,9 @@ export interface Product {
   velocity?: number; // FPS
   type?: string; // e.g., 'FMJ', 'JHP'
   ballisticsData?: any;
+  // Full raw spec sheet (every captured field) from the feed, stored in the
+  // AmmoSpecs/FirearmSpecs `specs` JSONB column. Rendered as the spec table.
+  specs?: Record<string, string>;
   // Market Data
   priceHistory?: PriceHistoryPoint[]; // Array of lowest prices over time
 }

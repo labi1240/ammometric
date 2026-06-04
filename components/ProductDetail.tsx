@@ -37,6 +37,29 @@ const PriceHistoryChart = dynamic(() => import('./PriceHistoryChart'), {
   loading: () => <div className="h-64 rounded-xl bg-slate-100 animate-pulse" />,
 });
 
+// --- Real spec-sheet rendering (from the captured `specs` JSONB) ---
+const SPEC_LABELS: Record<string, string> = {
+  muzzle_velocity: 'Muzzle Velocity', muzzle_energy: 'Muzzle Energy',
+  bullet_weight: 'Bullet Weight', bullet_type: 'Bullet Type', bullet_tip: 'Bullet Tip',
+  bullet_base: 'Bullet Base', bullet_casing: 'Bullet Casing', case_material: 'Case Material',
+  shot_size: 'Shot Size', shot_material: 'Shot Material', shell_length: 'Shell Length',
+  rounds_per_box: 'Rounds / Box', overall_length: 'Overall Length',
+  number_of_mags: 'Magazines', butt_plate: 'Butt Plate', firearm_type: 'Type',
+};
+// Keys shown elsewhere on the page or not useful in the spec sheet.
+const SKIP_SPEC_KEYS = new Set(['upc', 'mpn', 'brand', 'image', 'description', 'msrp', 'caliber']);
+
+function formatSpecLabel(key: string): string {
+  return SPEC_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function specEntries(specs?: Record<string, string>): { label: string; val: string }[] {
+  if (!specs) return [];
+  return Object.entries(specs)
+    .filter(([k, v]) => !SKIP_SPEC_KEYS.has(k) && v != null && String(v).trim() !== '')
+    .map(([k, v]) => ({ label: formatSpecLabel(k), val: String(v) }));
+}
+
 // --- Ballistics Simulation Engine (Ammo Only) ---
 
 interface BallisticsResult {
@@ -512,31 +535,31 @@ const ProductDetail: React.FC<{ initialProduct?: Product, pairedProduct?: Produc
                     }
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 lg:gap-x-12 gap-y-8 lg:gap-y-12">
-                    {isAmmo ? [
-                      { label: 'Manufacturer', val: product.brand.name },
-                      { label: 'Asset Class', val: product.caliber },
-                      { label: 'Unit Weight', val: `${product.grain} GR` },
-                      { label: 'Muzzle Velocity', val: `${product.velocity} FPS` },
-                      { label: 'Casing Interface', val: product.casing || 'Brass' },
-                      { label: 'Box Index', val: '50 Unit Node' },
-                    ].map(item => (
-                      <div key={item.label} className="border-b border-slate-100 pb-4 sm:pb-6">
-                        <dt className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1 sm:mb-2 font-mono">{item.label}</dt>
-                        <dd className="text-base sm:text-lg font-bold text-slate-900 tracking-tight font-mono">{item.val}</dd>
-                      </div>
-                    )) : [
-                      { label: 'Manufacturer', val: product.brand.name },
-                      { label: 'Caliber Index', val: product.caliber },
-                      { label: 'Payload Capacity', val: product.capacity || 'N/A' },
-                      { label: 'Barrel Length', val: product.barrelLength || 'N/A' },
-                      { label: 'Mechanical Action', val: 'Semi-Automatic' },
-                      { label: 'Safety Suite', val: 'Integrated Manual' },
-                    ].map(item => (
-                      <div key={item.label} className="border-b border-slate-100 pb-4 sm:pb-6">
-                        <dt className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1 sm:mb-2 font-mono">{item.label}</dt>
-                        <dd className="text-base sm:text-lg font-bold text-slate-900 tracking-tight font-mono">{item.val}</dd>
-                      </div>
-                    ))}
+                    {(() => {
+                      // Prefer the real captured spec sheet; fall back to typed fields.
+                      const real = specEntries(product.specs);
+                      const fallback = isAmmo
+                        ? [
+                            { label: 'Manufacturer', val: product.brand.name },
+                            { label: 'Bullet Weight', val: product.grain ? `${product.grain} gr` : '—' },
+                            { label: 'Muzzle Velocity', val: product.velocity ? `${product.velocity} FPS` : '—' },
+                            { label: 'Casing', val: product.casing || '—' },
+                          ]
+                        : [
+                            { label: 'Manufacturer', val: product.brand.name },
+                            { label: 'Capacity', val: product.capacity || '—' },
+                            { label: 'Barrel Length', val: product.barrelLength || '—' },
+                          ];
+                      const rows = real.length > 0
+                        ? [{ label: 'Manufacturer', val: product.brand.name }, ...real]
+                        : fallback;
+                      return rows.map(item => (
+                        <div key={item.label} className="border-b border-slate-100 pb-4 sm:pb-6">
+                          <dt className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-1 sm:mb-2 font-mono">{item.label}</dt>
+                          <dd className="text-base sm:text-lg font-bold text-slate-900 tracking-tight font-mono">{item.val}</dd>
+                        </div>
+                      ));
+                    })()}
                   </div>
                 </div>
                 <div className="bg-slate-50 rounded-2xl sm:rounded-[3rem] p-8 sm:p-16 border border-slate-200 shadow-inner flex flex-col justify-between relative overflow-hidden">

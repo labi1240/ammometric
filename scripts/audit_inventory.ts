@@ -28,7 +28,7 @@ async function main() {
 
     // Fetch caliber details for ammo
     for (const group of ammoCounts) {
-        const caliber = await prisma.caliber.findUnique({
+        const caliber = group.caliberId == null ? null : await prisma.caliber.findUnique({
             where: { id: group.caliberId }
         });
         console.log(`Caliber: ${caliber?.name || 'Unknown'} (ID: ${group.caliberId}) - Count: ${group._count.itemId}`);
@@ -59,7 +59,7 @@ async function main() {
     });
 
     for (const group of firearmCounts) {
-        const caliber = await prisma.caliber.findUnique({
+        const caliber = group.caliberId == null ? null : await prisma.caliber.findUnique({
             where: { id: group.caliberId }
         });
         console.log(`Caliber: ${caliber?.name || 'Unknown'} (ID: ${group.caliberId}) - Count: ${group._count.firearmSpecsId}`);

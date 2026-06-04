@@ -328,7 +328,7 @@ export async function getPairedProduct(itemId: string): Promise<Product | null> 
     if (item.kind === 'FIREARM' && item.FirearmSpecs?.FirearmChamber?.[0]) {
         caliberId = item.FirearmSpecs.FirearmChamber[0].caliberId;
     } else if (item.kind === 'AMMO' && item.AmmoSpecs) {
-        caliberId = item.AmmoSpecs.caliberId;
+        caliberId = item.AmmoSpecs.caliberId ?? undefined;
     }
 
     if (!caliberId) return null;
@@ -455,6 +455,8 @@ function mapToProduct(item: any): Product {
         image: item.image || '/placeholder.jpg',
         brand: brand,
         offers: offers,
+        // Full captured spec sheet (JSONB) for whichever kind applies.
+        specs: item.AmmoSpecs?.specs || item.FirearmSpecs?.specs || item.AccessorySpecs?.specs || undefined,
         priceHistory: []
     };
 
