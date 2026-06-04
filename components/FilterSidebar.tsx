@@ -54,6 +54,9 @@ interface FilterSidebarProps {
     grains?: FilterOption[];
     barrelLengths?: FilterOption[];
     capacities?: FilterOption[];
+    bulletTypes?: FilterOption[];
+    shotSizes?: FilterOption[];
+    shotMaterials?: FilterOption[];
   };
   filters: any;
   setFilters: (f: any) => void;
@@ -143,6 +146,36 @@ const FilterSidebar: React.FC<FilterSidebarProps> = ({ kind, facets, filters, se
             options={facets.casings}
             selectedValues={filters.casings || []}
             onToggle={(val) => toggleFilter('casings', val)}
+          />
+        )}
+
+        {kind === 'AMMO' && facets.bulletTypes && facets.bulletTypes.length > 0 && (
+          <FilterGroup
+            title="Bullet Type"
+            techLabel="[PROJ_TYPE]"
+            options={facets.bulletTypes}
+            selectedValues={filters.bulletType || []}
+            onToggle={(val) => toggleFilter('bulletType', val)}
+          />
+        )}
+
+        {kind === 'AMMO' && facets.shotSizes && facets.shotSizes.length > 0 && (
+          <FilterGroup
+            title="Shot Size"
+            techLabel="[SHOT_SIZE]"
+            options={facets.shotSizes}
+            selectedValues={filters.shotSize || []}
+            onToggle={(val) => toggleFilter('shotSize', val)}
+          />
+        )}
+
+        {kind === 'AMMO' && facets.shotMaterials && facets.shotMaterials.length > 0 && (
+          <FilterGroup
+            title="Shot Material"
+            techLabel="[SHOT_MAT]"
+            options={facets.shotMaterials}
+            selectedValues={filters.shotMaterial || []}
+            onToggle={(val) => toggleFilter('shotMaterial', val)}
           />
         )}
 

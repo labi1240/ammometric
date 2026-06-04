@@ -33,6 +33,9 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ initialProducts, kind, filt
     const [casingsFilter, setCasingsFilter] = useQueryState('casings', parseAsArrayOf(parseAsString).withDefault(initialFilters.casings || []).withOptions({ shallow: false }));
     const [barrelLengthFilter, setBarrelLengthFilter] = useQueryState('barrel', parseAsArrayOf(parseAsString).withDefault(initialFilters.barrelLength || []).withOptions({ shallow: false }));
     const [capacityFilter, setCapacityFilter] = useQueryState('capacity', parseAsArrayOf(parseAsString).withDefault(initialFilters.capacity || []).withOptions({ shallow: false }));
+    const [bulletTypeFilter, setBulletTypeFilter] = useQueryState('bullet', parseAsArrayOf(parseAsString).withDefault([]).withOptions({ shallow: false }));
+    const [shotSizeFilter, setShotSizeFilter] = useQueryState('shotsize', parseAsArrayOf(parseAsString).withDefault([]).withOptions({ shallow: false }));
+    const [shotMaterialFilter, setShotMaterialFilter] = useQueryState('shotmat', parseAsArrayOf(parseAsString).withDefault([]).withOptions({ shallow: false }));
     const [minPrice, setMinPrice] = useQueryState('min', parseAsFloat.withOptions({ shallow: false }));
     const [maxPrice, setMaxPrice] = useQueryState('max', parseAsFloat.withOptions({ shallow: false }));
 
@@ -61,11 +64,17 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ initialProducts, kind, filt
         if (products.length >= 200) return;
 
         startTransition(async () => {
+            const spec: Record<string, string[]> = {};
+            if (shotSizeFilter?.length) spec.shot_size = shotSizeFilter;
+            if (shotMaterialFilter?.length) spec.shot_material = shotMaterialFilter;
             const currentFilters = {
                 search: searchQuery || undefined,
                 brandSlug: brandsFilter || undefined,
                 caliberSlug: calibersFilter || undefined,
                 grain: grainsFilter || undefined,
+                casing: casingsFilter || undefined,
+                bulletType: bulletTypeFilter || undefined,
+                spec: Object.keys(spec).length ? spec : undefined,
                 inStock: inStockOnly
             };
 
@@ -98,6 +107,9 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ initialProducts, kind, filt
         grains: grainsFilter,
         barrelLength: barrelLengthFilter,
         capacity: capacityFilter,
+        bulletType: bulletTypeFilter,
+        shotSize: shotSizeFilter,
+        shotMaterial: shotMaterialFilter,
         minPrice,
         maxPrice
     };
@@ -111,6 +123,9 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ initialProducts, kind, filt
         if (newFilters.grains !== undefined) setGrainsFilter(newFilters.grains.length ? newFilters.grains : null);
         if (newFilters.barrelLength !== undefined) setBarrelLengthFilter(newFilters.barrelLength.length ? newFilters.barrelLength : null);
         if (newFilters.capacity !== undefined) setCapacityFilter(newFilters.capacity.length ? newFilters.capacity : null);
+        if (newFilters.bulletType !== undefined) setBulletTypeFilter(newFilters.bulletType.length ? newFilters.bulletType : null);
+        if (newFilters.shotSize !== undefined) setShotSizeFilter(newFilters.shotSize.length ? newFilters.shotSize : null);
+        if (newFilters.shotMaterial !== undefined) setShotMaterialFilter(newFilters.shotMaterial.length ? newFilters.shotMaterial : null);
         if (newFilters.minPrice !== undefined) setMinPrice(newFilters.minPrice);
         if (newFilters.maxPrice !== undefined) setMaxPrice(newFilters.maxPrice);
     };
@@ -125,6 +140,14 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ initialProducts, kind, filt
         const grainsMap = new Map<string, { label: string, count: number }>();
         const barrelLengthMap = new Map<string, { label: string, count: number }>();
         const capacityMap = new Map<string, { label: string, count: number }>();
+        const bulletTypeMap = new Map<string, { label: string, count: number }>();
+        const shotSizeMap = new Map<string, { label: string, count: number }>();
+        const shotMaterialMap = new Map<string, { label: string, count: number }>();
+        const bump = (m: Map<string, { label: string, count: number }>, key?: string | null) => {
+            if (!key) return;
+            const e = m.get(key) || { label: key, count: 0 };
+            e.count++; m.set(key, e);
+        };
 
         products.forEach(p => {
             if (!p.brand) return;
@@ -174,6 +197,13 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ initialProducts, kind, filt
                 capEntry.count++;
                 capacityMap.set(capKey, capEntry);
             }
+
+            // Ammo spec facets (bullet type is on p.type; shot fields live in the specs blob)
+            if (kind === 'AMMO') {
+                bump(bulletTypeMap, p.type);
+                bump(shotSizeMap, p.specs?.shot_size);
+                bump(shotMaterialMap, p.specs?.shot_material);
+            }
         });
 
         const sortFn = (a: any, b: any) => b.count - a.count;
@@ -185,8 +215,11 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ initialProducts, kind, filt
             grains: Array.from(grainsMap.entries()).map(([value, { label, count }]) => ({ label, value, count })).sort((a, b) => parseInt(a.value) - parseInt(b.value)), // Numeric sort for grains
             barrelLengths: Array.from(barrelLengthMap.entries()).map(([value, { label, count }]) => ({ label, value, count })).sort(sortFn),
             capacities: Array.from(capacityMap.entries()).map(([value, { label, count }]) => ({ label, value, count })).sort(sortFn),
+            bulletTypes: Array.from(bulletTypeMap.entries()).map(([value, { label, count }]) => ({ label, value, count })).sort(sortFn),
+            shotSizes: Array.from(shotSizeMap.entries()).map(([value, { label, count }]) => ({ label, value, count })).sort(sortFn),
+            shotMaterials: Array.from(shotMaterialMap.entries()).map(([value, { label, count }]) => ({ label, value, count })).sort(sortFn),
         };
-    }, [products]);
+    }, [products, kind]);
 
     // 4. Filtering Logic (Client-Side on loaded products)
     // 4. Filtering Logic
@@ -225,6 +258,9 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ initialProducts, kind, filt
         if (key === 'grains') setGrainsFilter(prev => prev.filter(v => v !== val).length ? prev.filter(v => v !== val) : null);
         if (key === 'barrelLength') setBarrelLengthFilter(prev => prev.filter(v => v !== val).length ? prev.filter(v => v !== val) : null);
         if (key === 'capacity') setCapacityFilter(prev => prev.filter(v => v !== val).length ? prev.filter(v => v !== val) : null);
+        if (key === 'bulletType') setBulletTypeFilter(prev => prev.filter(v => v !== val).length ? prev.filter(v => v !== val) : null);
+        if (key === 'shotSize') setShotSizeFilter(prev => prev.filter(v => v !== val).length ? prev.filter(v => v !== val) : null);
+        if (key === 'shotMaterial') setShotMaterialFilter(prev => prev.filter(v => v !== val).length ? prev.filter(v => v !== val) : null);
         if (key === 'minPrice') setMinPrice(null);
         if (key === 'maxPrice') setMaxPrice(null);
     };

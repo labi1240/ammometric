@@ -175,6 +175,14 @@ export async function getProducts(
         grain?: string[];
         inStock?: boolean;
         retailers?: string[];
+        // Typed ammo spec columns
+        bulletType?: string[];
+        casing?: string[];
+        // Typed firearm spec columns
+        action?: string[];
+        capacity?: string[];
+        // Arbitrary JSONB spec fields (e.g. { shot_size: [...], shot_material: [...] })
+        spec?: Record<string, string[]>;
     }
 ): Promise<Product[]> {
     "use cache";
@@ -216,35 +224,34 @@ export async function getProducts(
         where.offerCount = { gt: 0 };
     }
 
-    // Handle Caliber and Grain
-    if ((filters?.caliberSlug && filters.caliberSlug.length > 0) || (filters?.grain && filters.grain.length > 0)) {
-        if (kind === 'FIREARM') {
-            const firearmSpecsWhere: any = {};
-            if (filters.caliberSlug && filters.caliberSlug.length > 0) {
-                firearmSpecsWhere.FirearmChamber = {
-                    some: {
-                        Caliber: { slug: { in: filters.caliberSlug } }
-                    }
-                };
-            }
-            if (Object.keys(firearmSpecsWhere).length > 0) {
-                where.FirearmSpecs = firearmSpecsWhere;
-            }
-        } else {
-            const ammoSpecsWhere: any = {};
-            if (filters.caliberSlug && filters.caliberSlug.length > 0) {
-                ammoSpecsWhere.Caliber = { slug: { in: filters.caliberSlug } };
-            }
-            if (filters.grain && filters.grain.length > 0) {
-                const validGrains = filters.grain.map(g => parseInt(g)).filter(n => !isNaN(n));
-                if (validGrains.length > 0) {
-                    ammoSpecsWhere.grain = { in: validGrains };
-                }
-            }
-            if (Object.keys(ammoSpecsWhere).length > 0) {
-                where.AmmoSpecs = ammoSpecsWhere;
-            }
+    // Spec filters: typed columns + JSONB path filters, per kind.
+    if (kind === 'FIREARM') {
+        const fsWhere: Prisma.FirearmSpecsWhereInput = {};
+        if (filters?.caliberSlug?.length) {
+            fsWhere.FirearmChamber = { some: { Caliber: { slug: { in: filters.caliberSlug } } } };
         }
+        if (filters?.action?.length) fsWhere.actionType = { in: filters.action };
+        if (filters?.capacity?.length) fsWhere.capacity = { in: filters.capacity };
+        if (Object.keys(fsWhere).length > 0) where.FirearmSpecs = fsWhere;
+    } else {
+        const asWhere: Prisma.AmmoSpecsWhereInput = {};
+        if (filters?.caliberSlug?.length) asWhere.Caliber = { slug: { in: filters.caliberSlug } };
+        if (filters?.grain?.length) {
+            const validGrains = filters.grain.map(g => parseInt(g)).filter(n => !isNaN(n));
+            if (validGrains.length > 0) asWhere.grain = { in: validGrains };
+        }
+        if (filters?.bulletType?.length) asWhere.bulletType = { in: filters.bulletType };
+        if (filters?.casing?.length) asWhere.casing = { in: filters.casing };
+        // JSONB spec fields (shot_size, shot_material, ...): AND across fields, OR within a field.
+        if (filters?.spec) {
+            const andConds = Object.entries(filters.spec)
+                .filter(([, vals]) => vals && vals.length > 0)
+                .map(([key, vals]) => ({
+                    OR: vals.map((v) => ({ specs: { path: [key], equals: v } })),
+                }));
+            if (andConds.length > 0) asWhere.AND = andConds as Prisma.AmmoSpecsWhereInput[];
+        }
+        if (Object.keys(asWhere).length > 0) where.AmmoSpecs = asWhere;
     }
 
     const items = await prisma.catalogItem.findMany({

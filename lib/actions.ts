@@ -18,6 +18,12 @@ export async function getProducts(
         caliberSlug?: string[];
         grain?: string[];
         inStock?: boolean;
+        retailers?: string[];
+        bulletType?: string[];
+        casing?: string[];
+        action?: string[];
+        capacity?: string[];
+        spec?: Record<string, string[]>;
     }
 ): Promise<Product[]> {
     return data.getProducts(kind, limit, skip, filters);

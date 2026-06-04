@@ -27,13 +27,25 @@ async function AmmoList({ searchParams }: { searchParams: Promise<{ [key: string
     const inStockParam = params.is;
     const inStock = inStockParam === undefined ? true : inStockParam === 'true';
 
+    const toArr = (v: string | string[] | undefined) => v ? (Array.isArray(v) ? v : [v]) : undefined;
+    const casing = toArr(params.casings);
+    const bulletType = toArr(params.bullet);
+    const spec: Record<string, string[]> = {};
+    const shotSize = toArr(params.shotsize);
+    const shotMaterial = toArr(params.shotmat);
+    if (shotSize) spec.shot_size = shotSize;
+    if (shotMaterial) spec.shot_material = shotMaterial;
+
     const products = await getProducts('AMMO', 100, 0, {
         search,
         brandSlug,
         caliberSlug,
         grain,
         inStock,
-        retailers
+        retailers,
+        casing,
+        bulletType,
+        spec: Object.keys(spec).length ? spec : undefined,
     });
 
     return <CategoryPage kind="AMMO" initialProducts={products} />;
