@@ -8,6 +8,7 @@ import {
     getPairedProduct,
     getPriceHistory,
     getProducts,
+    getCompatibleProducts,
     isValidCaliberSlug,
     isValidBrandSlug,
 } from '@/lib/data';
@@ -102,10 +103,11 @@ async function SmartContent({ params }: { params: Promise<{ slug: string[] }> })
         // 1. Try as Product (preserves existing PDPs).
         const product = await getProductBySlug(slug);
         if (product && product.kind === 'FIREARM') {
-            const [offers, pairedProduct, priceHistory] = await Promise.all([
+            const [offers, pairedProduct, priceHistory, compatibleProducts] = await Promise.all([
                 getOffers(product.id),
                 getPairedProduct(product.id),
-                getPriceHistory(product.id)
+                getPriceHistory(product.id),
+                getCompatibleProducts(product.id)
             ]);
             const productWithData = { ...product, offers, priceHistory };
             const productLd = buildProductJsonLd(productWithData);
@@ -117,7 +119,7 @@ async function SmartContent({ params }: { params: Promise<{ slug: string[] }> })
             return (
                 <>
                     <JsonLd data={productLd ? [productLd, breadcrumbLd] : [breadcrumbLd]} />
-                    <ProductDetail initialProduct={productWithData} pairedProduct={pairedProduct} />
+                    <ProductDetail initialProduct={productWithData} pairedProduct={pairedProduct} compatibleProducts={compatibleProducts} />
                 </>
             );
         }

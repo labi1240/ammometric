@@ -2,6 +2,15 @@ import prisma from '@/lib/prisma';
 import { Product, Offer, Brand, Retailer, PriceHistoryPoint } from '../types';
 import { Prisma } from '@prisma/client';
 import { cacheLife, cacheTag } from 'next/cache';
+import { compatibleAmmoCalibers, compatibleGunCalibers } from './caliber-compat';
+
+// Shared include for fully-mapped product cards/lists.
+const PRODUCT_INCLUDE = {
+    Brand: true,
+    Offer: { include: { Retailer: true }, orderBy: { price: 'asc' as const }, take: 1 },
+    FirearmSpecs: { include: { FirearmChamber: { include: { Caliber: true } } } },
+    AmmoSpecs: { include: { Caliber: true } },
+} satisfies Prisma.CatalogItemInclude;
 
 // ==========================================
 // 1. STATIC DATA (Long Cache)
@@ -433,6 +442,62 @@ export async function getPairedProduct(itemId: string): Promise<Product | null> 
 
     if (!pairedItem) return null;
     return mapToProduct(pairedItem);
+}
+
+// 4b. CROSS-KIND COMPATIBILITY (caliber-based)
+// For an AMMO item → compatible firearms; for a FIREARM → compatible ammo.
+// Uses canonical caliber + a curated cross-compatibility map (.357/.38, etc.).
+export async function getCompatibleProducts(itemId: string, limit = 8): Promise<Product[]> {
+    "use cache";
+    cacheLife("hours");
+    cacheTag(`compat-${itemId}`);
+
+    const item = await prisma.catalogItem.findUnique({
+        where: { id: itemId },
+        include: {
+            AmmoSpecs: { include: { Caliber: true } },
+            FirearmSpecs: { include: { FirearmChamber: { include: { Caliber: true } } } },
+        },
+    });
+    if (!item) return [];
+
+    if (item.kind === 'AMMO') {
+        const slug = item.AmmoSpecs?.Caliber?.slug;
+        if (!slug) return [];
+        const gunCalibers = compatibleGunCalibers(slug);
+        const guns = await prisma.catalogItem.findMany({
+            where: {
+                kind: 'FIREARM',
+                offerCount: { gt: 0 },
+                FirearmSpecs: { FirearmChamber: { some: { Caliber: { slug: { in: gunCalibers } } } } },
+            },
+            orderBy: [{ upvotes: { sort: 'desc', nulls: 'last' } }, { bestPrice: 'asc' }],
+            take: limit,
+            include: PRODUCT_INCLUDE,
+        });
+        return guns.map(mapToProduct);
+    }
+
+    if (item.kind === 'FIREARM') {
+        const chamberSlugs = (item.FirearmSpecs?.FirearmChamber || [])
+            .map((c) => c.Caliber?.slug)
+            .filter((s): s is string => !!s);
+        if (chamberSlugs.length === 0) return [];
+        const ammoCalibers = compatibleAmmoCalibers(chamberSlugs);
+        const ammo = await prisma.catalogItem.findMany({
+            where: {
+                kind: 'AMMO',
+                offerCount: { gt: 0 },
+                AmmoSpecs: { Caliber: { slug: { in: ammoCalibers } } },
+            },
+            orderBy: [{ bestCpr: { sort: 'asc', nulls: 'last' } }, { bestPrice: 'asc' }],
+            take: limit,
+            include: PRODUCT_INCLUDE,
+        });
+        return ammo.map(mapToProduct);
+    }
+
+    return [];
 }
 
 // 5. HELPER MAPPERS

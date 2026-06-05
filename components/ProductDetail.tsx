@@ -198,7 +198,7 @@ const SpecBadge: React.FC<{ label: string; value: string | number; icon: React.E
 
 // --- Detail Component ---
 
-const ProductDetail: React.FC<{ initialProduct?: Product, pairedProduct?: Product | null }> = ({ initialProduct, pairedProduct }) => {
+const ProductDetail: React.FC<{ initialProduct?: Product, pairedProduct?: Product | null, compatibleProducts?: Product[] }> = ({ initialProduct, pairedProduct, compatibleProducts = [] }) => {
   const { compareIds, toggleCompare } = useGlobal();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -735,6 +735,51 @@ const ProductDetail: React.FC<{ initialProduct?: Product, pairedProduct?: Produc
           </div>
         </div>
       </div>
+
+      {/* Cross-kind compatibility: caliber-matched (incl. cross-compatible) */}
+      {compatibleProducts.length > 0 && (
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-8 lg:px-16 pb-16 sm:pb-24">
+          <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tighter mb-2 flex items-center gap-3">
+            <RiCrosshair2Line className="size-6 sm:size-7 text-slate-300" />
+            {isAmmo ? 'Compatible Firearms' : 'Compatible Ammunition'}
+          </h2>
+          <p className="text-slate-500 font-medium mb-8 text-sm sm:text-base">
+            {isAmmo
+              ? `Firearms chambered in ${product?.caliber ?? 'this caliber'} that can fire this round.`
+              : `In-stock ammunition for the ${product?.caliber ?? 'this'} chambering.`}
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+            {compatibleProducts.map((c) => {
+              const best = c.offers?.[0];
+              const href = `/${c.kind === 'AMMO' ? 'ammo' : 'firearms'}/${c.slug}`;
+              return (
+                <a
+                  key={c.id}
+                  href={href}
+                  className="group bg-white border border-slate-200 rounded-2xl p-4 hover:border-slate-300 hover:shadow-lg transition-all"
+                >
+                  <div className="aspect-square rounded-xl bg-slate-50 mb-3 overflow-hidden flex items-center justify-center">
+                    <img
+                      src={c.image || '/no_image.png'}
+                      alt={c.title}
+                      loading="lazy"
+                      className="object-contain w-full h-full group-hover:scale-105 transition-transform"
+                    />
+                  </div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 truncate">{c.brand?.name}</p>
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 line-clamp-2 mb-2 leading-snug">{c.title}</h3>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-black text-slate-900">{best ? `$${best.price.toFixed(2)}` : '—'}</span>
+                    {c.kind === 'AMMO' && best?.cpr ? (
+                      <span className="text-[10px] font-bold text-emerald-600 whitespace-nowrap">${best.cpr.toFixed(2)}/rd</span>
+                    ) : null}
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
