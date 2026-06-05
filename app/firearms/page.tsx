@@ -27,12 +27,15 @@ async function FirearmList({ searchParams }: { searchParams: Promise<{ [key: str
     const inStockParam = params.is;
     const inStock = inStockParam === undefined ? true : inStockParam === 'true';
 
+    const sort = typeof params.sort === 'string' ? params.sort : undefined;
+
     const products = await getProducts('FIREARM', 100, 0, {
         search,
         brandSlug,
         caliberSlug,
         inStock,
-        retailers
+        retailers,
+        sort,
     });
 
     return <CategoryPage kind="FIREARM" initialProducts={products} />;

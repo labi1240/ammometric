@@ -183,6 +183,8 @@ export async function getProducts(
         capacity?: string[];
         // Arbitrary JSONB spec fields (e.g. { shot_size: [...], shot_material: [...] })
         spec?: Record<string, string[]>;
+        // Result ordering (see SORT_ORDERS below). Defaults to best CPR then price.
+        sort?: string;
     }
 ): Promise<Product[]> {
     "use cache";
@@ -254,6 +256,18 @@ export async function getProducts(
         if (Object.keys(asWhere).length > 0) where.AmmoSpecs = asWhere;
     }
 
+    // Sort options. Postgres ASC defaults to NULLS LAST (unknowns sink), which
+    // is what we want for cheapest-first; force NULLS LAST on DESC too.
+    const SORT_ORDERS: Record<string, Prisma.CatalogItemOrderByWithRelationInput[]> = {
+        cpr: [{ bestCpr: { sort: 'asc', nulls: 'last' } }, { bestPrice: 'asc' }],
+        cpr_shipped: [{ bestCprShipped: { sort: 'asc', nulls: 'last' } }, { bestPrice: 'asc' }],
+        price_asc: [{ bestPrice: { sort: 'asc', nulls: 'last' } }],
+        price_desc: [{ bestPrice: { sort: 'desc', nulls: 'last' } }],
+        newest: [{ createdAt: { sort: 'desc', nulls: 'last' } }],
+        popular: [{ upvotes: { sort: 'desc', nulls: 'last' } }, { bestCpr: 'asc' }],
+    };
+    const orderBy = SORT_ORDERS[filters?.sort ?? ''] ?? [{ bestCpr: 'asc' }, { bestPrice: 'asc' }];
+
     const items = await prisma.catalogItem.findMany({
         where,
         take: limit,
@@ -274,10 +288,7 @@ export async function getProducts(
             },
             AccessorySpecs: true
         },
-        orderBy: [
-            { bestCpr: 'asc' },
-            { bestPrice: 'asc' }
-        ]
+        orderBy
     });
 
     return items.map(mapToProduct);

@@ -24,6 +24,7 @@ export async function getProducts(
         action?: string[];
         capacity?: string[];
         spec?: Record<string, string[]>;
+        sort?: string;
     }
 ): Promise<Product[]> {
     return data.getProducts(kind, limit, skip, filters);

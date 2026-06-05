@@ -36,6 +36,7 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ initialProducts, kind, filt
     const [bulletTypeFilter, setBulletTypeFilter] = useQueryState('bullet', parseAsArrayOf(parseAsString).withDefault([]).withOptions({ shallow: false }));
     const [shotSizeFilter, setShotSizeFilter] = useQueryState('shotsize', parseAsArrayOf(parseAsString).withDefault([]).withOptions({ shallow: false }));
     const [shotMaterialFilter, setShotMaterialFilter] = useQueryState('shotmat', parseAsArrayOf(parseAsString).withDefault([]).withOptions({ shallow: false }));
+    const [sort, setSort] = useQueryState('sort', parseAsString.withDefault('').withOptions({ shallow: false }));
     const [minPrice, setMinPrice] = useQueryState('min', parseAsFloat.withOptions({ shallow: false }));
     const [maxPrice, setMaxPrice] = useQueryState('max', parseAsFloat.withOptions({ shallow: false }));
 
@@ -75,6 +76,7 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ initialProducts, kind, filt
                 casing: casingsFilter || undefined,
                 bulletType: bulletTypeFilter || undefined,
                 spec: Object.keys(spec).length ? spec : undefined,
+                sort: sort || undefined,
                 inStock: inStockOnly
             };
 
@@ -339,6 +341,38 @@ const CategoryPage: React.FC<CategoryPageProps> = ({ initialProducts, kind, filt
                         count={filteredResults.length}
                     />
                 </header>
+
+                {/* Sort control */}
+                <div className="flex items-center justify-between mb-4">
+                    <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                        {filteredResults.length} Results
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="sort-select" className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sort</label>
+                        <select
+                            id="sort-select"
+                            value={sort}
+                            onChange={(e) => setSort(e.target.value || null)}
+                            className="bg-white border border-slate-200 rounded-lg py-2 px-3 text-xs font-bold text-slate-700 shadow-xs focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all cursor-pointer"
+                        >
+                            {kind === 'AMMO' ? (
+                                <>
+                                    <option value="">Best Value (¢/round)</option>
+                                    <option value="cpr_shipped">Cheapest /Round (Shipped)</option>
+                                    <option value="price_asc">Price: Low to High</option>
+                                    <option value="price_desc">Price: High to Low</option>
+                                    <option value="newest">Newest</option>
+                                </>
+                            ) : (
+                                <>
+                                    <option value="">Best Price</option>
+                                    <option value="price_desc">Price: High to Low</option>
+                                    <option value="newest">Newest</option>
+                                </>
+                            )}
+                        </select>
+                    </div>
+                </div>
 
                 <div className="space-y-4">
                     {filteredResults.map(p => (

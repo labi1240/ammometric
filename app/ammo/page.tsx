@@ -36,6 +36,8 @@ async function AmmoList({ searchParams }: { searchParams: Promise<{ [key: string
     if (shotSize) spec.shot_size = shotSize;
     if (shotMaterial) spec.shot_material = shotMaterial;
 
+    const sort = typeof params.sort === 'string' ? params.sort : undefined;
+
     const products = await getProducts('AMMO', 100, 0, {
         search,
         brandSlug,
@@ -46,6 +48,7 @@ async function AmmoList({ searchParams }: { searchParams: Promise<{ [key: string
         casing,
         bulletType,
         spec: Object.keys(spec).length ? spec : undefined,
+        sort,
     });
 
     return <CategoryPage kind="AMMO" initialProducts={products} />;
