@@ -3,8 +3,8 @@ User-agent: *
 Allow: /
 
 # Host
-Host: https://ammometric.com
+Host: https://ammometric.vercel.app
 
 # Sitemaps
-Sitemap: https://ammometric.com/sitemap.xml
+Sitemap: https://ammometric.vercel.app/sitemap.xml
 Sitemap: https://getloaded.vercel.app/server-sitemap.xml

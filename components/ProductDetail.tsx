@@ -112,42 +112,172 @@ const ScientificChart: React.FC<{
   type: 'trajectory' | 'energy',
   zero?: number
 }> = ({ data, type, zero }) => {
-  const width = 800;
-  const height = 400;
-  const padding = { top: 40, right: 40, bottom: 60, left: 70 };
+  const [hover, setHover] = useState<number | null>(null);
+
+  const width = 820;
+  const height = 440;
+  const padding = { top: 52, right: 36, bottom: 70, left: 82 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
   const isTraj = type === 'trajectory';
   const lineColor = isTraj ? '#2563eb' : '#ea580c';
+  const fillColor = isTraj ? '#3b82f6' : '#f97316';
+  const gradientId = `bx-grad-${type}`;
 
-  const minVal = Math.min(...data.map(d => isTraj ? d.drop : d.energy));
-  const maxVal = Math.max(...data.map(d => isTraj ? d.drop : d.energy), 0);
-  const valRange = isTraj ? Math.max(Math.abs(minVal), Math.abs(maxVal), 50) : maxVal * 1.1;
+  const maxRange = data[data.length - 1].range;
+  const getVal = (d: BallisticsResult) => (isTraj ? d.drop : d.energy);
+  const yLabel = isTraj ? 'BULLET PATH (INCHES)' : 'KINETIC ENERGY (FT·LB)';
 
+  const rawMin = Math.min(...data.map(getVal));
+  const rawMax = Math.max(...data.map(getVal), 0);
+  // Trajectory uses a symmetric scale around 0 so the line-of-sight sits dead-center.
+  const valRange = isTraj
+    ? Math.max(Math.abs(rawMin), Math.abs(rawMax), 4)
+    : (rawMax * 1.12) || 1;
+
+  const xScale = (range: number) => padding.left + (range / maxRange) * chartWidth;
   const yScale = (val: number) => isTraj
-    ? padding.top + (chartHeight / 2) - (val / valRange) * (chartHeight / 2)
+    ? padding.top + chartHeight / 2 - (val / valRange) * (chartHeight / 2)
     : padding.top + chartHeight - (val / valRange) * chartHeight;
 
-  const xScale = (range: number) => padding.left + (range / data[data.length - 1].range) * chartWidth;
+  const yTicks = (isTraj ? [1, 0.5, 0, -0.5, -1] : [1, 0.75, 0.5, 0.25, 0]).map(p => p * valRange);
 
-  const points = data.map(d => `${xScale(d.range)},${yScale(isTraj ? d.drop : d.energy)}`).join(' ');
+  const linePoints = data.map(d => `${xScale(d.range)},${yScale(getVal(d))}`).join(' ');
+  // Close the polygon onto the y=0 baseline so the deviation from line-of-sight reads as a filled band.
+  const areaPoints =
+    `${xScale(data[0].range)},${yScale(0)} ` +
+    data.map(d => `${xScale(d.range)},${yScale(getVal(d))}`).join(' ') +
+    ` ${xScale(maxRange)},${yScale(0)}`;
+
+  // Headline stats so the user gets the takeaway without reading every point.
+  const apex = isTraj ? data.reduce((a, b) => (b.drop > a.drop ? b : a)) : null;
+  const last = data[data.length - 1];
+  const stats = isTraj
+    ? [
+        { k: 'MAX RISE', v: `${apex!.drop > 0 ? '+' : ''}${apex!.drop.toFixed(1)}"`, sub: `@ ${apex!.range} yd` },
+        { k: `DROP @ ${maxRange}`, v: `${last.drop.toFixed(1)}"`, sub: 'below sight' },
+      ]
+    : [
+        { k: 'MUZZLE', v: `${data[0].energy.toLocaleString()}`, sub: 'ft·lb' },
+        { k: `RETAINED @ ${maxRange}`, v: `${last.energy.toLocaleString()}`, sub: `${Math.round((last.energy / (data[0].energy || 1)) * 100)}% kept` },
+      ];
+
+  const active = hover != null ? data[hover] : null;
+  const zeroX = zero != null && zero <= maxRange ? xScale(zero) : null;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs p-4">
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible select-none bg-white font-sans">
-        {[0, 0.25, 0.5, 0.75, 1].map(p => {
-          const val = isTraj ? (p - 0.5) * -2 * valRange : valRange * p;
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
+      {/* Headline stats */}
+      <div className="flex divide-x divide-slate-100 border-b border-slate-100">
+        {stats.map(s => (
+          <div key={s.k} className="flex-1 px-5 py-4">
+            <div className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400 font-mono">{s.k}</div>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-xl sm:text-2xl font-black tabular-nums tracking-tight" style={{ color: lineColor }}>{s.v}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{s.sub}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="w-full h-full select-none bg-white font-sans"
+        onMouseLeave={() => setHover(null)}
+      >
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={fillColor} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={fillColor} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+
+        {/* Horizontal gridlines + Y tick labels */}
+        {yTicks.map((val, i) => {
           const y = yScale(val);
+          const isBaseline = Math.abs(val) < 1e-6;
           return (
-            <React.Fragment key={p}>
-              <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="#f1f5f9" strokeWidth="1" />
-              <text x={padding.left - 12} y={y} textAnchor="end" alignmentBaseline="middle" className="text-[10px] fill-slate-400 font-mono font-medium tabular-nums">{Math.round(val)}</text>
+            <React.Fragment key={i}>
+              <line
+                x1={padding.left} y1={y} x2={width - padding.right} y2={y}
+                stroke={isBaseline ? '#cbd5e1' : '#f1f5f9'}
+                strokeWidth={isBaseline ? 1.25 : 1}
+                strokeDasharray={isBaseline && isTraj ? '5 4' : undefined}
+              />
+              <text x={padding.left - 14} y={y} textAnchor="end" alignmentBaseline="middle" className="text-[10px] fill-slate-400 font-mono font-semibold tabular-nums">
+                {isTraj ? `${val > 0 ? '+' : ''}${Math.round(val)}` : Math.round(val).toLocaleString()}
+              </text>
             </React.Fragment>
           );
         })}
-        <polyline points={points} fill="none" stroke={lineColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        <text x={width / 2} y={height - 15} textAnchor="middle" className="text-[10px] fill-slate-500 font-black uppercase tracking-widest">Target Distance (Yards)</text>
+
+        {/* Line-of-sight label on the trajectory baseline */}
+        {isTraj && (
+          <text x={width - padding.right} y={yScale(0) - 6} textAnchor="end" className="text-[8px] fill-slate-400 font-black uppercase tracking-[0.2em] font-mono">
+            Line of sight
+          </text>
+        )}
+
+        {/* Zero-range marker */}
+        {zeroX != null && (
+          <>
+            <line x1={zeroX} y1={padding.top} x2={zeroX} y2={padding.top + chartHeight} stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
+            <g transform={`translate(${zeroX}, ${padding.top - 8})`}>
+              <rect x={-26} y={-13} width={52} height={16} rx={3} className="fill-slate-900" />
+              <text x={0} y={-2} textAnchor="middle" className="text-[8px] fill-white font-black uppercase tracking-[0.15em] font-mono">{zero} yd zero</text>
+            </g>
+          </>
+        )}
+
+        {/* Area + line */}
+        <polygon points={areaPoints} fill={`url(#${gradientId})`} />
+        <polyline points={linePoints} fill="none" stroke={lineColor} strokeWidth="2.75" strokeLinecap="round" strokeLinejoin="round" />
+
+        {/* Data points + X tick labels + hover hit-areas */}
+        {data.map((d, i) => {
+          const x = xScale(d.range);
+          const y = yScale(getVal(d));
+          const on = hover === i;
+          return (
+            <React.Fragment key={i}>
+              <line x1={x} y1={padding.top + chartHeight} x2={x} y2={padding.top + chartHeight + 5} stroke="#cbd5e1" strokeWidth="1" />
+              <text x={x} y={padding.top + chartHeight + 20} textAnchor="middle" className="text-[9px] fill-slate-500 font-mono font-bold tabular-nums">{d.range}</text>
+              <circle cx={x} cy={y} r={on ? 5 : 3} fill="#fff" stroke={lineColor} strokeWidth={on ? 3 : 2} />
+              {/* invisible vertical band to make hovering easy */}
+              <rect
+                x={x - chartWidth / data.length / 2} y={padding.top}
+                width={chartWidth / data.length} height={chartHeight}
+                fill="transparent"
+                onMouseEnter={() => setHover(i)}
+              />
+            </React.Fragment>
+          );
+        })}
+
+        {/* Crosshair + tooltip */}
+        {active && (() => {
+          const x = xScale(active.range);
+          const y = yScale(getVal(active));
+          const flip = x > width - 150;
+          const tx = flip ? x - 138 : x + 14;
+          return (
+            <g pointerEvents="none">
+              <line x1={x} y1={padding.top} x2={x} y2={padding.top + chartHeight} stroke={lineColor} strokeWidth="1" strokeDasharray="3 3" opacity="0.5" />
+              <g transform={`translate(${tx}, ${Math.max(padding.top, Math.min(y - 34, padding.top + chartHeight - 78))})`}>
+                <rect width="124" height="74" rx="8" className="fill-slate-900" />
+                <text x="12" y="20" className="text-[10px] fill-slate-300 font-black uppercase tracking-widest font-mono">{active.range} yd</text>
+                <text x="12" y="38" className="text-[11px] fill-white font-bold font-mono tabular-nums">Drop {active.drop > 0 ? '+' : ''}{active.drop.toFixed(1)}"</text>
+                <text x="12" y="53" className="text-[11px] fill-white font-bold font-mono tabular-nums">Vel {active.velocity.toLocaleString()} fps</text>
+                <text x="12" y="68" className="text-[11px] fill-white font-bold font-mono tabular-nums">Eng {active.energy.toLocaleString()} ft·lb</text>
+              </g>
+            </g>
+          );
+        })()}
+
+        {/* Axis titles */}
+        <text x={padding.left + chartWidth / 2} y={height - 16} textAnchor="middle" className="text-[10px] fill-slate-500 font-black uppercase tracking-[0.2em] font-mono">Target Distance (Yards)</text>
+        <text transform={`translate(20, ${padding.top + chartHeight / 2}) rotate(-90)`} textAnchor="middle" className="text-[10px] fill-slate-500 font-black uppercase tracking-[0.2em] font-mono">{yLabel}</text>
       </svg>
     </div>
   );
@@ -402,17 +532,17 @@ const ProductDetail: React.FC<{ initialProduct?: Product, pairedProduct?: Produc
             <table className="min-w-full divide-y divide-slate-100 text-sm">
               <thead>
                 <tr className="bg-slate-50/30">
-                  <th className="px-4 py-4 sm:px-10 sm:py-6 text-left font-black uppercase tracking-widest text-slate-400 text-[9px] sm:text-[10px]">Source Retailer</th>
-                  <th className="hidden sm:table-cell px-4 py-4 sm:px-10 sm:py-6 text-center font-black uppercase tracking-widest text-slate-400 text-[9px] sm:text-[10px]">Status</th>
-                  {isAmmo && <th className="hidden md:table-cell px-4 py-4 sm:px-10 sm:py-6 text-right font-black uppercase tracking-widest text-slate-400 text-[9px] sm:text-[10px]">CPR</th>}
-                  <th className="px-4 py-4 sm:px-10 sm:py-6 text-right font-black uppercase tracking-widest text-slate-400 text-[9px] sm:text-[10px]">Price</th>
-                  <th className="px-4 py-4 sm:px-10 sm:py-6 text-right font-black uppercase tracking-widest text-slate-400 text-[9px] sm:text-[10px]">Action</th>
+                  <th className="px-4 py-4 sm:px-6 sm:py-5 text-left font-black uppercase tracking-widest text-slate-400 text-[9px] sm:text-[10px]">Source Retailer</th>
+                  <th className="hidden sm:table-cell px-4 py-4 sm:px-6 sm:py-5 text-center font-black uppercase tracking-widest text-slate-400 text-[9px] sm:text-[10px]">Status</th>
+                  {isAmmo && <th className="hidden md:table-cell px-4 py-4 sm:px-6 sm:py-5 text-right font-black uppercase tracking-widest text-slate-400 text-[9px] sm:text-[10px]">CPR</th>}
+                  <th className="px-4 py-4 sm:px-6 sm:py-5 text-right font-black uppercase tracking-widest text-slate-400 text-[9px] sm:text-[10px]">Price</th>
+                  <th className="px-4 py-4 sm:px-6 sm:py-5 text-right font-black uppercase tracking-widest text-slate-400 text-[9px] sm:text-[10px]">Action</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-slate-100">
                 {sortedOffers.map((offer, i) => (
                   <tr key={offer.id} className={`group transition-all ${i === 0 ? 'bg-emerald-50/40' : 'hover:bg-slate-50/50'}`}>
-                    <td className="px-4 py-6 sm:px-10 sm:py-8">
+                    <td className="px-4 py-5 sm:px-6 sm:py-6">
                       <div className="flex items-center gap-3 sm:gap-5">
                         <div className="size-8 sm:size-12 shrink-0 bg-white rounded-lg sm:rounded-xl flex items-center justify-center font-black text-slate-400 text-xs sm:text-sm shadow-xs ring-1 ring-slate-100 relative">
                           {offer.retailer.name.charAt(0)}
@@ -420,7 +550,7 @@ const ProductDetail: React.FC<{ initialProduct?: Product, pairedProduct?: Produc
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="block font-black text-slate-900 tracking-tight text-sm sm:text-lg truncate max-w-[120px] sm:max-w-none">{offer.retailer.name}</span>
+                            <span className="block font-black text-slate-900 tracking-tight text-sm sm:text-lg truncate max-w-[120px] sm:max-w-[240px]">{offer.retailer.name}</span>
                             <span title="Verified Node" className="shrink-0">
                               <RiCheckboxCircleFill className="size-3 sm:size-4 text-emerald-500" />
                             </span>
@@ -431,12 +561,12 @@ const ProductDetail: React.FC<{ initialProduct?: Product, pairedProduct?: Produc
                         </div>
                       </div>
                     </td>
-                    <td className="hidden sm:table-cell px-4 py-6 sm:px-10 sm:py-8 text-center">
+                    <td className="hidden sm:table-cell px-4 py-5 sm:px-6 sm:py-6 text-center">
                       <span className={`inline-flex items-center gap-2 text-[9px] sm:text-[10px] font-black px-3 py-1.5 sm:px-4 sm:py-2 rounded-full border uppercase tracking-widest shadow-xs ${offer.inStock ? 'text-emerald-700 bg-emerald-100/50 border-emerald-200' : 'text-slate-400 bg-slate-100 border-slate-200'}`}>
                         <div className={`size-1.5 rounded-full ${offer.inStock ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`} /> {offer.inStock ? 'Active' : 'Exhausted'}
                       </span>
                     </td>
-                    <td className="hidden md:table-cell px-4 py-6 sm:px-10 sm:py-8 text-center">
+                    <td className="hidden md:table-cell px-4 py-5 sm:px-6 sm:py-6 text-center">
                       <div className="text-[9px] sm:text-[10px] uppercase tracking-tight font-bold font-mono mt-1">
                         {offer.freeShipping ? (
                           <span
@@ -456,11 +586,11 @@ const ProductDetail: React.FC<{ initialProduct?: Product, pairedProduct?: Produc
                       </div>
                     </td>
                     {isAmmo && (
-                      <td className={`hidden md:table-cell px-4 py-6 sm:px-10 sm:py-8 text-right font-mono text-lg sm:text-xl ${i === 0 ? 'font-black text-emerald-700' : 'font-bold text-slate-600'}`}>
+                      <td className={`hidden md:table-cell px-4 py-5 sm:px-6 sm:py-6 text-right font-mono text-lg sm:text-xl ${i === 0 ? 'font-black text-emerald-700' : 'font-bold text-slate-600'}`}>
                         ${formatCpr(offer.cpr)}
                       </td>
                     )}
-                    <td className="px-4 py-6 sm:px-10 sm:py-8 text-right">
+                    <td className="px-4 py-5 sm:px-6 sm:py-6 text-right">
                       <div className="flex flex-col items-end">
                         <span className={`font-mono text-base sm:text-lg ${i === 0 && !isAmmo ? 'font-black text-emerald-700' : 'font-bold text-slate-900'}`}>
                           ${offer.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -472,12 +602,12 @@ const ProductDetail: React.FC<{ initialProduct?: Product, pairedProduct?: Produc
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-6 sm:px-10 sm:py-8 text-right">
+                    <td className="px-4 py-5 sm:pl-4 sm:pr-6 sm:py-6 text-right">
                       <a
                         href={offer.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`inline-flex items-center gap-2 sm:gap-3 px-3 py-2 sm:px-6 sm:py-3.5 rounded-lg sm:rounded-xl font-black text-[9px] sm:text-[10px] uppercase tracking-[0.2em] transition-all shadow-lg ${i === 0 ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-900/10' : 'bg-slate-100 text-slate-900 hover:bg-slate-900 hover:text-white shadow-slate-900/5'}`}
+                        className={`inline-flex items-center gap-2 px-3 py-2 sm:px-5 sm:py-3 rounded-lg sm:rounded-xl font-black text-[9px] sm:text-[10px] uppercase tracking-[0.15em] whitespace-nowrap transition-all shadow-md ${i === 0 ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-900/10' : 'bg-slate-100 text-slate-900 hover:bg-slate-900 hover:text-white shadow-slate-900/5'}`}
                       >
                         <span className="hidden sm:inline">Visit Store</span>
                         <span className="sm:hidden">Visit</span>
@@ -593,40 +723,40 @@ const ProductDetail: React.FC<{ initialProduct?: Product, pairedProduct?: Produc
 
             {suiteTab === 'market' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-12 mb-12 sm:mb-20">
-                  <div className="bg-white p-6 sm:p-12 rounded-2xl sm:rounded-[2.5rem] border border-slate-200 shadow-xs ring-1 ring-slate-900/5">
-                    <span className="text-[9px] sm:text-[11px] font-black text-slate-500 uppercase tracking-[0.3em] font-mono">[90D_BENCHMARK]</span>
-                    <div className="text-3xl sm:text-5xl font-black text-slate-900 font-mono mt-3 sm:mt-4 tracking-tighter">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-5 mb-8 sm:mb-10">
+                  <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs ring-1 ring-slate-900/5">
+                    <span className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-[0.25em] font-mono">[90D_BENCHMARK]</span>
+                    <div className="text-2xl sm:text-3xl font-black text-slate-900 font-mono mt-2 sm:mt-3 tracking-tighter">
                       {isAmmo ? `$${formatCpr(bestOffer.cpr)}` : `$${bestOffer.price.toLocaleString()}`}
                     </div>
-                    <div className="mt-3 sm:mt-5 text-[9px] sm:text-[11px] font-bold text-emerald-600 flex items-center gap-2 uppercase tracking-[0.2em]">
-                      <RiArrowRightUpLine className="size-4 sm:size-5 -rotate-45" /> Asset Value: Stable
+                    <div className="mt-2 sm:mt-3 text-[9px] sm:text-[10px] font-bold text-emerald-600 flex items-center gap-1.5 uppercase tracking-[0.15em]">
+                      <RiArrowRightUpLine className="size-3.5 sm:size-4 -rotate-45" /> Asset: Stable
                     </div>
                   </div>
-                  <div className="bg-slate-50 p-6 sm:p-12 rounded-2xl sm:rounded-[3rem] border border-slate-200 ring-1 ring-slate-900/5 shadow-inner">
-                    <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 font-mono mb-3 sm:mb-4 block">
+                  <div className="bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-200 ring-1 ring-slate-900/5 shadow-inner">
+                    <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 font-mono mb-2 sm:mb-3 block">
                       {product.grain ? 'UNIT WEIGHT' : 'BORE DIAMETER'}
                     </span>
-                    <div className="text-xl sm:text-2xl font-black text-slate-900 font-mono tracking-tighter">
+                    <div className="text-lg sm:text-xl font-black text-slate-900 font-mono tracking-tighter">
                       {product.grain ? `${product.grain} GR` : (product.gauge || product.caliber || 'N/A')}
                     </div>
                   </div>
-                  <div className="bg-white p-6 sm:p-12 rounded-2xl sm:rounded-[2.5rem] border border-slate-200 shadow-xs ring-1 ring-slate-900/5">
-                    <span className="text-[9px] sm:text-[11px] font-black text-slate-500 uppercase tracking-[0.3em] font-mono">[MARKET_DEPTH]</span>
-                    <div className="text-3xl sm:text-5xl font-black text-slate-900 font-mono mt-3 sm:mt-4 tracking-tighter">{product.offers.length} Nodes</div>
-                    <div className="mt-3 sm:mt-5 text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">Global Index Tracked</div>
+                  <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs ring-1 ring-slate-900/5">
+                    <span className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-[0.25em] font-mono">[MARKET_DEPTH]</span>
+                    <div className="text-2xl sm:text-3xl font-black text-slate-900 font-mono mt-2 sm:mt-3 tracking-tighter">{product.offers.length} Nodes</div>
+                    <div className="mt-2 sm:mt-3 text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">Global Index Tracked</div>
                   </div>
-                  <div className="bg-white p-6 sm:p-12 rounded-2xl sm:rounded-[2.5rem] border border-slate-200 shadow-xs ring-1 ring-slate-900/5">
-                    <span className="text-[9px] sm:text-[11px] font-black text-slate-500 uppercase tracking-[0.3em] font-mono">[VOLATILITY_INDEX]</span>
-                    <div className="text-3xl sm:text-5xl font-black text-emerald-600 font-mono mt-3 sm:mt-4 tracking-tighter">Low</div>
-                    <div className="mt-3 sm:mt-5 text-[9px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em]">Category: {product.kind}</div>
+                  <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-xs ring-1 ring-slate-900/5">
+                    <span className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-[0.25em] font-mono">[VOLATILITY_INDEX]</span>
+                    <div className="text-2xl sm:text-3xl font-black text-emerald-600 font-mono mt-2 sm:mt-3 tracking-tighter">Low</div>
+                    <div className="mt-2 sm:mt-3 text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em]">Category: {product.kind}</div>
                   </div>
                 </div>
-                <div className="bg-slate-50/50 p-6 sm:p-16 rounded-2xl sm:rounded-[4rem] border border-slate-200 min-h-[400px] sm:min-h-[560px] flex flex-col relative overflow-hidden shadow-inner">
-                  <h3 className="text-[10px] sm:text-[12px] font-black uppercase tracking-[0.4em] text-slate-400 mb-8 sm:mb-12 font-mono">TRANSACTION_FLOW_VISUALIZATION</h3>
+                <div className="bg-slate-50/50 p-5 sm:p-8 rounded-2xl sm:rounded-3xl border border-slate-200 flex flex-col relative overflow-hidden shadow-inner">
+                  <h3 className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.3em] text-slate-400 mb-6 sm:mb-8 font-mono">TRANSACTION_FLOW_VISUALIZATION</h3>
                   <div className="flex-1 w-full overflow-x-auto">
                     <PriceHistoryChart data={product.priceHistory || []} isAmmo={isAmmo} />
-                    <div className="mt-8 text-center">
+                    <div className="mt-6 text-center">
                       <p className="text-[10px] sm:text-xs text-slate-400 font-medium max-w-[320px] mx-auto leading-relaxed italic">
                         Financial aggregates are compiled from verified retailer endpoints every 240 seconds. Historical trends represent daily minimum valuations.
                       </p>
@@ -713,8 +843,8 @@ const ProductDetail: React.FC<{ initialProduct?: Product, pairedProduct?: Produc
                                   <td className={`px-4 py-4 sm:px-10 sm:py-6 font-black border-r border-slate-100 tabular-nums text-xs sm:text-sm ${row.drop < 0 ? 'text-red-600' : 'text-slate-900'}`}>
                                     {row.drop > 0 ? '+' : ''}{row.drop.toFixed(1)}"
                                   </td>
-                                  <td className="px-4 py-4 sm:px-10 sm:py-6 text-slate-600 border-r border-slate-100 tabular-nums font-bold text-xs sm:text-sm">{row.velocity.toLocaleString()}</td>
-                                  <td className="px-4 py-4 sm:px-10 sm:py-6 text-slate-600 tabular-nums font-bold text-xs sm:text-sm">{row.energy.toLocaleString()}</td>
+                                  <td className="px-4 py-4 sm:px-6 sm:py-5 text-slate-600 border-r border-slate-100 tabular-nums font-bold text-xs sm:text-sm">{row.velocity.toLocaleString()}</td>
+                                  <td className="px-4 py-4 sm:px-6 sm:py-5 text-slate-600 tabular-nums font-bold text-xs sm:text-sm">{row.energy.toLocaleString()}</td>
                                 </tr>
                               ))}
                             </tbody>
